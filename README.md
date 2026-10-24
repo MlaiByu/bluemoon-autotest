@@ -67,10 +67,24 @@ pytest
 - **影响**：老文章在站内搜索永远搜不到
 - **修复建议**：`ALTER TABLE posts DROP INDEX ft_search, ADD FULLTEXT INDEX ft_search (title, summary, content) WITH PARSER ngram;`（重建索引即覆盖存量数据）
 
+### BUG-2 模型包漏导 UserAvatar，独立脚本崩溃（CI 首跑暴露，已修复）
+
+- **现象**：CI 全新环境执行 `scripts/init_db.py` 时抛 `InvalidRequestError: expression 'UserAvatar' failed to locate a name`，初始化直接失败
+- **根因**：`app/models/__init__.py` 注释声称"统一导入所有模型"，实际漏导 `user_avatar.py`；`User.avatars` 关系按字符串名解析，mapper 配置时找不到目标类。本地应用启动时路由间接导入了全部模型，掩盖了这个缺陷
+- **影响**：任何脱离应用主程序单独导入模型包的脚本（init_db、Alembic 迁移）都无法运行
+- **修复**：模型包补导 `UserAvatar` 并加入 `__all__`（bluemoon 提交 `fix(models): register UserAvatar in models package`）
+
+### BUG-3 全文索引未纳入建表元数据，全新环境搜索 500（CI 二跑暴露，已修复）
+
+- **现象**：CI 干净库中带 keyword 的搜索请求全部返回 500，20/22 用例通过、2 条搜索用例失败
+- **根因**：`ft_search` FULLTEXT 索引只存在于手工维护的本地库，`Post` 模型未声明 → `create_all` 建出的 posts 表没有该索引 → `MATCH ... AGAINST` 抛 MySQL 1191
+- **影响**：任何从零部署的环境（新机器、CI、Docker）站内搜索整体不可用
+- **修复**：`init_db.py` 建表后幂等补建 ngram 全文索引（bluemoon 提交 `fix(init_db): ensure posts ngram fulltext index after create_all`）
+
 ## Roadmap
 
-- [ ] Allure 报告（allure-pytest 已接入依赖）
-- [ ] GitHub Actions CI 门禁
+- [x] Allure 报告（allure-pytest 已接入依赖）
+- [x] GitHub Actions CI 门禁（MySQL 8 + Redis 7 service 容器，自动部署被测系统）
 - [ ] 文章列表分页参数边界用例
 - [ ] 阅读上报去重（同 IP 5 分钟窗口）用例
 - [ ] 分类接口用例
