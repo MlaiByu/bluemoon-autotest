@@ -1,0 +1,5 @@
+# bluemoon-autotest 依赖（Python 3.12，安装到项目 .venv）
+pytest>=8.0
+requests>=2.31
+PyYAML>=6.0
+allure-pytest>=2.13

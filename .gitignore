@@ -1,0 +1,14 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# 测试产物
+reports/
+allure-results/
+*.log
+
+# 本地凭据（永不入库）
+*.env
+config/config.local.yaml

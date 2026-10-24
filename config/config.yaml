@@ -1,0 +1,12 @@
+# 环境配置（密码不要写在这里，用环境变量 BM_ADMIN_PASSWORD 注入）
+base_url: "http://127.0.0.1:8000"
+api_prefix: "/api/v1"
+timeout: 10
+
+admin:
+  username: "admin"
+  password: ""   # 留空则依赖登录态的用例自动 skip
+
+# 测试数据标记：所有测试创建的文章标题都带这个前缀，
+# 方便识别和清理，绝不碰真实博客内容
+test_marker: "[autotest]"

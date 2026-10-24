@@ -1,0 +1,104 @@
+name: API Tests
+
+# 触发：push 到 main / 所有 PR / 手动
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  api-tests:
+    runs-on: ubuntu-latest
+
+    # 被测系统依赖 MySQL + Redis，用 service 容器起真实依赖
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: rootpw
+          MYSQL_DATABASE: bluemoon
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -prootpw"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+
+    env:
+      # 被测系统（bluemoon blog-api）的配置
+      MYSQL_HOST: 127.0.0.1
+      MYSQL_PORT: 3306
+      MYSQL_DB: bluemoon
+      MYSQL_USER: bluemoon
+      MYSQL_PASSWORD: bluemoon123
+      MYSQL_ADMIN_USER: root
+      MYSQL_ADMIN_PASSWORD: rootpw
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: 6379
+      REDIS_ENABLED: "true"
+      DEBUG: "false"
+      # 测试框架的凭据（与 init_db.py 种子的管理员一致）
+      BM_ADMIN_USERNAME: admin
+      BM_ADMIN_PASSWORD: admin123
+
+    steps:
+      - name: 检出测试框架
+        uses: actions/checkout@v4
+
+      - name: 拉取被测系统（bluemoon blog-api）
+        uses: actions/checkout@v4
+        with:
+          repository: MlaiByu/bluemoon
+          path: bluemoon
+
+      - name: 安装 Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: 安装被测系统依赖
+        run: pip install -r bluemoon/blog-api/requirements.txt
+
+      - name: 安装测试框架依赖
+        run: pip install -r requirements.txt
+
+      - name: 初始化数据库（建库/建用户/建表/种子管理员）
+        working-directory: bluemoon/blog-api
+        run: python scripts/init_db.py
+
+      - name: 启动被测后端并等待就绪
+        working-directory: bluemoon/blog-api
+        run: |
+          nohup python run.py > server.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8000/api/v1/health > /dev/null; then
+              echo "后端已就绪（第 ${i} 次探测）"
+              break
+            fi
+            sleep 2
+          done
+          curl -sf http://127.0.0.1:8000/api/v1/health
+          tail -n 20 server.log
+
+      - name: 运行接口测试
+        run: pytest --alluredir=reports/allure-results
+
+      - name: 上传 Allure 结果
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-results
+          path: reports/allure-results
+          retention-days: 14
